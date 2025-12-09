@@ -1,20 +1,6 @@
 #!/usr/bin/env python
 """
-Preprocess COLMAP model for DVP/APD-MVS.
-
-- Reads COLMAP cameras / images / points3D (txt or bin)
-- Writes:
-    * cams/00000000_cam.txt, ...
-    * images/00000000.jpg, ...
-    * pair.txt
-    * sfm/00000000.txt, ...   <-- used by your FIRST_INIT block
-
-SFM format per image i:
-    x y X Y Z R G B
-where:
-    (x, y)   = 2D pixel coord (scaled by `scale_factor`)
-    (X, Y, Z)= 3D WORLD coordinates (COLMAP frame)
-    (R,G,B)  = point color
+Preprocess COLMAP model for DVP/APD-MVS - COMPLETE VERSION
 """
 
 from __future__ import print_function
@@ -28,7 +14,8 @@ import argparse
 import shutil
 import cv2
 
-# ============================ read_model.py ============================ #
+# ======================== COLMAP Model Reading ======================== #
+
 CameraModel = collections.namedtuple(
     "CameraModel", ["model_id", "model_name", "num_params"])
 Camera = collections.namedtuple(
@@ -253,6 +240,7 @@ def read_points3d_binary(path_to_model_file):
 
 
 def read_model(path, ext):
+    """Main function to read COLMAP model"""
     if ext == ".txt":
         cameras = read_cameras_text(os.path.join(path, "cameras" + ext))
         images = read_images_text(os.path.join(path, "images" + ext))
@@ -286,25 +274,7 @@ def qvec2rotmat(qvec):
     )
 
 
-def rotmat2qvec(R):
-    Rxx, Ryx, Rzx, Rxy, Ryy, Rzy, Rxz, Ryz, Rzz = R.flat
-    K = (
-        np.array(
-            [
-                [Rxx - Ryy - Rzz, 0, 0, 0],
-                [Ryx + Rxy, Ryy - Rxx - Rzz, 0, 0],
-                [Rzx + Rxz, Rzy + Ryz, Rzz - Rxx - Ryy, 0],
-                [Ryz - Rzy, Rzx - Rxz, Rxy - Ryx, Rxx + Ryy + Rzz],
-            ]
-        )
-        / 3.0
-    )
-    eigvals, eigvecs = np.linalg.eigh(K)
-    qvec = eigvecs[[3, 0, 1, 2], np.argmax(eigvals)]
-    if qvec[0] < 0:
-        qvec *= -1
-    return qvec
-
+# ======================== Processing Functions ======================== #
 
 def calc_score(inputs, images, points3d, extrinsic, args):
     i, j = inputs
@@ -341,23 +311,16 @@ def calc_score(inputs, images, points3d, extrinsic, args):
 def write_sfm_folder(save_folder, images, points3d, extrinsic, scale_factor):
     """
     Create sfm/ folder for APD format.
-
-    Each file 00000000.txt (for index i) contains:
-        x y X Y Z R G B
-
-    where:
-        (x, y)  = pixel coords (scaled by `scale_factor`)
-        (X,Y,Z) = WORLD coords (COLMAP points3D.xyz)
-        R,G,B   = point color
+    Each file contains: x y X Y Z R G B
     """
     sfm_dir = os.path.join(save_folder, "sfm")
     os.makedirs(sfm_dir, exist_ok=True)
 
-    print(f"Writing SFM folder to: {sfm_dir}")
+    print(f"\n{'='*60}")
+    print(f"📝 Writing SFM folder: {sfm_dir}")
+    print(f"   Scale factor: {scale_factor}")
 
-    # images is already reindexed: keys 1..N in insertion order
     for img_id, img in images.items():
-        # APD index is 0-based
         apd_idx = img_id - 1
         lines = []
 
@@ -365,44 +328,83 @@ def write_sfm_folder(save_folder, images, points3d, extrinsic, scale_factor):
             if pid == -1:
                 continue
 
-            # 2D pixel coords in original COLMAP image
             x, y = img.xys[idx]
-            # match the image scaling used when exporting jpgs
-            x /= scale_factor
-            y /= scale_factor
+            x = x / scale_factor
+            y = y / scale_factor
 
-            # 3D world coordinates (COLMAP frame)
-            Pw = points3d[pid].xyz  # (Xw, Yw, Zw)
+            Pw = points3d[pid].xyz
             Xw, Yw, Zw = Pw.tolist()
-
             R, G, B = points3d[pid].rgb.tolist()
 
-            lines.append(f"{x} {y} {Xw} {Yw} {Zw} {R} {G} {B}")
+            lines.append(f"{x:.6f} {y:.6f} {Xw:.6f} {Yw:.6f} {Zw:.6f} {R} {G} {B}")
 
         fname = os.path.join(sfm_dir, f"{apd_idx:08d}.txt")
         with open(fname, "w") as f:
             f.write("\n".join(lines))
+        
+        if apd_idx < 3:
+            print(f"   ✓ {fname} [{len(lines)} points]")
 
-    print("SFM files written successfully.\n")
+    print(f"   ✓ Total: {len(images)} SFM files written")
+    print(f"{'='*60}\n")
 
 
 def processing_single_scene(args):
+    print(f"\n{'='*60}")
+    print(f"🔄 Processing COLMAP Model")
+    print(f"{'='*60}")
+    
     image_dir = os.path.join(args.dense_folder, "images")
-    model_dir = os.path.join(args.dense_folder, "dslr_calibration_undistorted")
+    model_dir = os.path.join(args.dense_folder, args.model_dir)
     cam_dir = os.path.join(args.save_folder, "cams")
     image_converted_dir = os.path.join(args.save_folder, "images")
 
+    # Verify input directories
+    if not os.path.exists(image_dir):
+        print(f"❌ Error: Image directory not found: {image_dir}")
+        return False
+    
+    if not os.path.exists(model_dir):
+        print(f"❌ Error: Model directory not found: {model_dir}")
+        return False
+
+    print(f"📁 Input image dir: {image_dir}")
+    print(f"📁 COLMAP model dir: {model_dir}")
+    print(f"📁 Output dir: {args.save_folder}")
+    print(f"🔢 Scale factor: {args.scale_factor}")
+
+    # Clean output directories
     if os.path.exists(image_converted_dir):
-        print("remove:{}".format(image_converted_dir))
+        print(f"🗑 Removing existing: {image_converted_dir}")
         shutil.rmtree(image_converted_dir)
     os.makedirs(image_converted_dir)
+    
     if os.path.exists(cam_dir):
-        print("remove:{}".format(cam_dir))
+        print(f"🗑 Removing existing: {cam_dir}")
         shutil.rmtree(cam_dir)
+    os.makedirs(cam_dir)
 
-    cameras, images, points3d = read_model(model_dir, args.model_ext)
+    # Read COLMAP model
+    print(f"\n📖 Reading COLMAP model ({args.model_ext})...")
+    try:
+        cameras, images, points3d = read_model(model_dir, args.model_ext)
+    except Exception as e:
+        print(f"❌ Error reading COLMAP model: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+    
     num_images = len(list(images.items()))
+    print(f"✅ Loaded:")
+    print(f"   - {len(cameras)} cameras")
+    print(f"   - {num_images} images")
+    print(f"   - {len(points3d)} 3D points")
+    
+    if num_images == 0:
+        print(f"❌ Error: No images in COLMAP model!")
+        return False
 
+    # Camera parameter types
     param_type = {
         "SIMPLE_PINHOLE": ["f", "cx", "cy"],
         "PINHOLE": ["fx", "fy", "cx", "cy"],
@@ -412,40 +414,15 @@ def processing_single_scene(args):
         "RADIAL_FISHEYE": ["f", "cx", "cy", "k1", "k2"],
         "OPENCV": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2"],
         "OPENCV_FISHEYE": ["fx", "fy", "cx", "cy", "k1", "k2", "k3", "k4"],
-        "FULL_OPENCV": [
-            "fx",
-            "fy",
-            "cx",
-            "cy",
-            "k1",
-            "k2",
-            "p1",
-            "p2",
-            "k3",
-            "k4",
-            "k5",
-            "k6",
-        ],
+        "FULL_OPENCV": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3", "k4", "k5", "k6"],
         "FOV": ["fx", "fy", "cx", "cy", "omega"],
-        "THIN_PRISM_FISHEYE": [
-            "fx",
-            "fy",
-            "cx",
-            "cy",
-            "k1",
-            "k2",
-            "p1",
-            "p2",
-            "k3",
-            "k4",
-            "sx1",
-            "sy1",
-        ],
+        "THIN_PRISM_FISHEYE": ["fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2", "k3", "k4", "sx1", "sy1"],
     }
 
     scale_factor = args.scale_factor
 
-    # intrinsics
+    # Build intrinsics
+    print(f"\n🔧 Building camera intrinsics...")
     intrinsic = {}
     for camera_id, cam in cameras.items():
         params_dict = {
@@ -456,29 +433,24 @@ def processing_single_scene(args):
             params_dict["fy"] = params_dict["f"]
         i = np.array(
             [
-                [
-                    params_dict["fx"] / scale_factor,
-                    0,
-                    params_dict["cx"] / scale_factor,
-                ],
-                [
-                    0,
-                    params_dict["fy"] / scale_factor,
-                    params_dict["cy"] / scale_factor,
-                ],
+                [params_dict["fx"] / scale_factor, 0, params_dict["cx"] / scale_factor],
+                [0, params_dict["fy"] / scale_factor, params_dict["cy"] / scale_factor],
                 [0, 0, 1],
             ]
         )
         intrinsic[camera_id] = i
-    print("intrinsic\n", intrinsic, end="\n\n")
+    print(f"✅ Intrinsics built for {len(intrinsic)} cameras")
 
-    # Reindex images as 1..N (COLMAP ids -> consecutive)
+    # Reindex images
+    print(f"\n🔢 Reindexing images...")
     new_images = {}
     for i, image_id in enumerate(sorted(images.keys())):
         new_images[i + 1] = images[image_id]
     images = new_images
+    print(f"✅ Images reindexed: 1..{len(images)}")
 
-    # extrinsics
+    # Build extrinsics
+    print(f"\n🔧 Building camera extrinsics...")
     extrinsic = {}
     for image_id, image in images.items():
         e = np.zeros((4, 4))
@@ -486,12 +458,13 @@ def processing_single_scene(args):
         e[:3, 3] = image.tvec
         e[3, 3] = 1
         extrinsic[image_id] = e
-    print("extrinsic[1]\n", extrinsic[1], end="\n\n")
+    print(f"✅ Extrinsics built for {len(extrinsic)} images")
 
-    # write SFM text files for APD
+    # Write SFM folder
     write_sfm_folder(args.save_folder, images, points3d, extrinsic, scale_factor)
 
-    # depth range & interval
+    # Compute depth ranges
+    print(f"\n📏 Computing depth ranges...")
     depth_ranges = {}
     for i in range(num_images):
         zs = []
@@ -500,14 +473,10 @@ def processing_single_scene(args):
                 continue
             transformed = np.matmul(
                 extrinsic[i + 1],
-                [
-                    points3d[p3d_id].xyz[0],
-                    points3d[p3d_id].xyz[1],
-                    points3d[p3d_id].xyz[2],
-                    1,
-                ],
+                [points3d[p3d_id].xyz[0], points3d[p3d_id].xyz[1], points3d[p3d_id].xyz[2], 1],
             )
             zs.append(transformed[2].item())
+        
         depth_min = 0
         depth_max = 0
         if len(zs) != 0:
@@ -531,13 +500,15 @@ def processing_single_scene(args):
             )
         else:
             depth_num = args.max_d
-        depth_interval = (
-            depth_max - depth_min
-        ) / (depth_num - 1) / args.interval_scale
+        
+        depth_interval = (depth_max - depth_min) / (depth_num - 1) / args.interval_scale
         depth_ranges[i + 1] = (depth_min, depth_interval, depth_num, depth_max)
-    print("depth_ranges[1]\n", depth_ranges[1], end="\n\n")
+    
+    print(f"✅ Depth ranges computed")
+    print(f"   Example (image 0): min={depth_ranges[1][0]:.2f}, max={depth_ranges[1][3]:.2f}")
 
-    # view selection
+    # View selection
+    print(f"\n🔍 Computing view selection scores...")
     score = np.zeros((len(images), len(images)))
     queue = []
     for i in range(len(images)):
@@ -545,22 +516,25 @@ def processing_single_scene(args):
             queue.append((i, j))
 
     p = mp.Pool(processes=mp.cpu_count())
-    func = partial(
-        calc_score, images=images, points3d=points3d, args=args, extrinsic=extrinsic
-    )
+    func = partial(calc_score, images=images, points3d=points3d, args=args, extrinsic=extrinsic)
     result = p.map(func, queue)
+    p.close()
+    p.join()
+    
     for i, j, s in result:
         score[i, j] = s
         score[j, i] = s
+    
     view_sel = []
-    num_view = min(20, len(images) - 1)
+    num_view = min(args.num_neighbor_views, len(images) - 1)
     for i in range(len(images)):
         sorted_score = np.argsort(score[i])[::-1]
         view_sel.append([(k, score[i, k]) for k in sorted_score[:num_view]])
-    print("view_sel[0]\n", view_sel[0], end="\n\n")
+    
+    print(f"✅ View selection done (top {num_view} views per image)")
 
-    # write cams and pair.txt
-    os.makedirs(cam_dir, exist_ok=True)
+    # Write camera files
+    print(f"\n💾 Writing camera files...")
     for i in range(num_images):
         with open(os.path.join(cam_dir, "%08d_cam.txt" % i), "w") as f:
             f.write("extrinsic\n")
@@ -571,20 +545,18 @@ def processing_single_scene(args):
             f.write("\nintrinsic\n")
             for j in range(3):
                 for k in range(3):
-                    f.write(
-                        str(intrinsic[images[i + 1].camera_id][j, k]) + " "
-                    )
+                    f.write(str(intrinsic[images[i + 1].camera_id][j, k]) + " ")
                 f.write("\n")
-            f.write(
-                "\n%f %f %f %f\n"
-                % (
-                    depth_ranges[i + 1][0],
-                    depth_ranges[i + 1][1],
-                    depth_ranges[i + 1][2],
-                    depth_ranges[i + 1][3],
-                )
-            )
+            f.write("\n%f %f %f %f\n" % (
+                depth_ranges[i + 1][0],
+                depth_ranges[i + 1][1],
+                depth_ranges[i + 1][2],
+                depth_ranges[i + 1][3],
+            ))
+    print(f"✅ Camera files written: {cam_dir}")
 
+    # Write pair.txt
+    print(f"\n💾 Writing pair.txt...")
     with open(os.path.join(args.save_folder, "pair.txt"), "w") as f:
         f.write("%d\n" % len(images))
         for i, sorted_score in enumerate(view_sel):
@@ -592,70 +564,86 @@ def processing_single_scene(args):
             for image_id, s in sorted_score:
                 f.write("%d %d " % (image_id, s))
             f.write("\n")
+    print(f"✅ pair.txt written")
 
-    # find max image size
+    # Process images
+    print(f"\n📐 Finding maximum image dimensions...")
     max_width = 0
     max_height = 0
     for i in range(num_images):
         img_path = os.path.join(image_dir, images[i + 1].name)
+        if not os.path.exists(img_path):
+            print(f"⚠ Warning: Image not found: {img_path}")
+            continue
         img = cv2.imread(img_path)
+        if img is None:
+            print(f"⚠ Warning: Cannot read image: {img_path}")
+            continue
         if max_height < img.shape[0]:
             max_height = img.shape[0]
         if max_width < img.shape[1]:
             max_width = img.shape[1]
+    
+    print(f"✅ Max dimensions: {max_width}×{max_height}")
 
-    # convert to padded, resized jpgs
+    # Convert and pad images
+    print(f"\n🖼️  Converting and padding images...")
+    target_width = int(max_width / scale_factor)
+    target_height = int(max_height / scale_factor)
+    print(f"   Target size: {target_width}×{target_height}")
+    
     for i in range(num_images):
         img_path = os.path.join(image_dir, images[i + 1].name)
+        if not os.path.exists(img_path):
+            continue
+        
         img = cv2.imread(img_path)
+        if img is None:
+            continue
+        
         pad_width = max_width - img.shape[1]
         pad_height = max_height - img.shape[0]
-        img_pad = np.pad(
-            img, ((0, pad_height), (0, pad_width), (0, 0)), "constant"
-        )
-        img_pad = cv2.resize(
-            img_pad,
-            (int(img_pad.shape[1] / scale_factor), int(img_pad.shape[0] / scale_factor)),
-            interpolation=cv2.INTER_NEAREST,
-        )
-        cv2.imwrite(
-            os.path.join(image_converted_dir, "%08d.jpg" % i), img_pad
-        )
+        img_pad = np.pad(img, ((0, pad_height), (0, pad_width), (0, 0)), "constant", constant_values=0)
+        
+        img_resized = cv2.resize(img_pad, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
+        
+        out_path = os.path.join(image_converted_dir, "%08d.jpg" % i)
+        cv2.imwrite(out_path, img_resized)
+        
+        if i < 3:
+            print(f"   ✓ {os.path.basename(out_path)} [{img_resized.shape[1]}×{img_resized.shape[0]}]")
+    
+    print(f"✅ All images converted: {image_converted_dir}")
+    
+    print(f"\n{'='*60}")
+    print(f"✅ Processing complete!")
+    print(f"{'='*60}\n")
+    
+    return True
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert COLMAP model for APD/DVP-MVS")
 
-    parser.add_argument("--dense_folder", required=True, type=str, help="dense_folder.")
-    parser.add_argument("--save_folder", required=True, type=str, help="save_folder.")
-
+    parser.add_argument("--dense_folder", required=True, type=str, help="Input folder")
+    parser.add_argument("--save_folder", required=True, type=str, help="Output folder")
+    parser.add_argument("--model_dir", type=str, default="sparse", help="COLMAP model subfolder")
     parser.add_argument("--max_d", type=int, default=192)
-    parser.add_argument("--interval_scale", type=float, default=1)
-    parser.add_argument(
-        "--scale_factor",
-        type=float,
-        default=1,
-        help="Must match the downscale used for images in APD.",
-    )
-
-    parser.add_argument(
-        "--theta0", type=float, default=5
-    )
-    parser.add_argument(
-        "--sigma1", type=float, default=1
-    )
-    parser.add_argument(
-        "--sigma2", type=float, default=10
-    )
-    parser.add_argument(
-        "--model_ext",
-        type=str,
-        default=".txt",
-        choices=[".txt", ".bin"],
-        help="sparse model ext",
-    )
+    parser.add_argument("--interval_scale", type=float, default=1.0)
+    parser.add_argument("--scale_factor", type=float, default=1.0)
+    parser.add_argument("--num_neighbor_views", type=int, default=10)
+    parser.add_argument("--theta0", type=float, default=5.0)
+    parser.add_argument("--sigma1", type=float, default=1.0)
+    parser.add_argument("--sigma2", type=float, default=10.0)
+    parser.add_argument("--model_ext", type=str, default=".txt", choices=[".txt", ".bin"])
 
     args = parser.parse_args()
 
-    os.makedirs(os.path.join(args.save_folder), exist_ok=True)
-    processing_single_scene(args)
+    os.makedirs(args.save_folder, exist_ok=True)
+    success = processing_single_scene(args)
+    
+    if not success:
+        print("\n❌ Processing failed!")
+        exit(1)
+    
+    print("\n✅ All done! You can now run APD-MVS.\n")

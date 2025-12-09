@@ -2,6 +2,7 @@ sudo docker run --gpus all -it --rm     -v "$(pwd)":/workspace     -v /home/kwk/
 
 python3 colmap2mvsnet.py --dense_folder /data/multi_view_training_dslr_undistorted/office_original/ --save_folder /data/office_DVP_MVS --scale_factor 2 
 
+python3 colmap2mvsnet.py     --dense_folder /data/multi_view_training_dslr_undistorted/office     --save_folder /workspace/office_DVP_MVS     --model_dir sparse     --scale_factor 1.0     --model_ext .txt
 
 
 
@@ -14,4 +15,4 @@ pip3 install -e ".[all]"
 pip3 install pygltflib
 
 
-python3 depth_anything3_pipeline.py --input  /workspace/xyz/ --output /workspace/xyz_output
+python3 export_dmb.py     --input_dir /workspace/office_DVP_MVS/images     --output_dir /workspace/office_DVP_MVS/dep/
