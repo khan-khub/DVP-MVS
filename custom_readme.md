@@ -1,5 +1,15 @@
 # Build and Run 
 
+Run the DVP-MVS docker which is same as APDe-MVS docker 
+```bash
+sudo docker run --gpus all -it --rm     -v "$(pwd)":/workspace     apde-mvs-5080
+```
+
+Prepare data using 
+```bash 
+python3 colmap2mvsnet.py --dense_folder /workspace/data/multi_view_training_dslr_undistorted/office/ --save_folder /workspace/test/office --scale_factor 2 
+```
+
 Run DA3 docker
 ```bash
 sudo docker run --gpus all -it --rm     -v "$PWD":/workspace     da3-final
@@ -13,11 +23,6 @@ python3 export_dmb.py --input_dir /workspace/test/office/images/ --output_dir /w
 Run the DVP-MVS docker which is same as APDe-MVS docker 
 ```bash
 sudo docker run --gpus all -it --rm     -v "$(pwd)":/workspace     apde-mvs-5080
-```
-
-Prepare data using 
-```bash 
-python3 colmap2mvsnet.py --dense_folder /workspace/data/multi_view_training_dslr_undistorted/office/ --save_folder /workspace/test/office --scale_factor 2 
 ```
 
 Build code using 
