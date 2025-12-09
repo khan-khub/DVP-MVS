@@ -1144,28 +1144,28 @@ void APD::InuputInitialization() {
 	std::cout << "Image size: " << width << " * " << height << std::endl;
 	// =================================================
 	// read depth form geom consistency
-	std::cout << "1.1 " << width << " * " << height << std::endl;
+	// std::cout << "1.1 " << width << " * " << height << std::endl;
 	if (params_host.geom_consistency) { //YZL 后面除了第一轮，都需要用到深度来计算可见性
-		std::cout << "1.2 " << width << " * " << height << std::endl;
+		// std::cout << "1.2 " << width << " * " << height << std::endl;
 	//if (true) {
 		depths.clear();
-		std::cout << "1 " << width << " * " << height << std::endl;
+		// std::cout << "1 " << width << " * " << height << std::endl;
 		path ref_depth_path = problem.result_folder / path("depths.dmb");
 		cv::Mat ref_depth;
-		std::cout << "2 " << width << " * " << height << std::endl;
+		// std::cout << "2 " << width << " * " << height << std::endl;
 		ReadBinMat(ref_depth_path, ref_depth);
 		depths.push_back(ref_depth);
-		std::cout << "3 " << width << " * " << height << std::endl;
+		// std::cout << "3 " << width << " * " << height << std::endl;
 		for (const auto& src_idx : problem.src_image_ids) {
-			std::cout << "4 " << width << " * " << height << std::endl;
+			// std::cout << "4 " << width << " * " << height << std::endl;
 
 			path src_depth_path = problem.dense_folder / path("APD") / path(ToFormatIndex(src_idx)) / path("depths.dmb");
-			std::cout << "5 " << width << " * " << height << std::endl;
+			// std::cout << "5 " << width << " * " << height << std::endl;
 
 			cv::Mat src_depth;
 			ReadBinMat(src_depth_path, src_depth);
 			depths.push_back(src_depth);
-			std::cout << "6 " << width << " * " << height << std::endl;
+			// std::cout << "6 " << width << " * " << height << std::endl;
 		}
 		for (auto& depth : depths) {
 			if (depth.cols != width || depth.rows != height) {
@@ -1176,9 +1176,9 @@ void APD::InuputInitialization() {
 	}
 	// =================================================
 	// read weak info
-	std::cout << "1.2 " << width << " * " << height << std::endl;
+	// std::cout << "1.2 " << width << " * " << height << std::endl;
 	if (params_host.use_APD) {
-		std::cout << "1.3 " << width << " * " << height << std::endl;
+		// std::cout << "1.3 " << width << " * " << height << std::endl;
 		path weak_info_path = problem.result_folder / path("weak.bin");
 		if (!exists(weak_info_path)) {
 			std::cerr << "Can't find weak info file: " << weak_info_path.string() << std::endl;
@@ -1206,7 +1206,7 @@ void APD::InuputInitialization() {
 		std::cout << "Weak count: " << weak_count << " / " << weak_info_host.cols * weak_info_host.rows << " = " << (float)weak_count / (float)(weak_info_host.cols * weak_info_host.rows) * 100 << "%" << std::endl;
 	}
 	else {
-		std::cout << "1.4 " << width << " * " << height << std::endl;
+		// std::cout << "1.4 " << width << " * " << height << std::endl;
 		weak_info_host = cv::Mat::zeros(height, width, CV_8UC1);
 		weak_count = 0;
 		for (int r = 0; r < weak_info_host.rows; ++r) {
@@ -1218,38 +1218,38 @@ void APD::InuputInitialization() {
 	// ==================================================================================================
 	// 这里想直接进行初始化
 
-	std::cout << "1.5 " << width << " * " << height << std::endl;
+	// std::cout << "1.5 " << width << " * " << height << std::endl;
 
 	plane_hypotheses_host = new float4[cameras[0].height * cameras[0].width];
 
 	if (params_host.state == FIRST_INIT) { //原图大小,这里只需要对自身重新生成，然后根据生成结果去用于自身初始化即可
 	//if (false){
-		std::cout << "1.55 " << width << " * " << height << std::endl;
+		// std::cout << "1.55 " << width << " * " << height << std::endl;
 
 		path dep_folder = problem.dense_folder / path("dep");
-		std::cout << "1.6 " << dep_folder << " * " << height << std::endl;
+		std::cout << dep_folder << " * " << height << std::endl;
 
 		path sfm_folder = problem.dense_folder / path("sfm");
-		std::cout << "1.7 " << sfm_folder << " * " << height << std::endl;
+		std::cout << sfm_folder << " * " << height << std::endl;
 
 		path ref_dep_folder = dep_folder / path(ToFormatIndex(problem.ref_image_id) + ".dmb");
 		cv::Mat dep;
 		ReadBinMat(ref_dep_folder, dep);
-		std::cout << "1.8 " << " * " << height << std::endl;
+		// std::cout << "1.8 " << " * " << height << std::endl;
 
 		for (int y = 0; y < dep.rows; y++) {
 			for (int x = 0; x < dep.cols; x++) {
 				dep.at<float>(y, x) = 255 - (dep.at<float>(y, x));
 			}
 		}
-		std::cout << "1.9 " << " * " << height << std::endl;
+		// std::cout << "1.9 " << " * " << height << std::endl;
 
 		path ref_sfm_folder = sfm_folder / path(ToFormatIndex(problem.ref_image_id) + ".txt");
 
 		ifstream file(ref_sfm_folder);
 		std::stringstream iss;
 		std::string line;
-		std::cout << "2 " << " * " << height << std::endl;
+		// std::cout << "2 " << " * " << height << std::endl;
 
 		// 定义临时存储当前文件坐标和颜色的vector
 		std::vector<float2> xy_temp;
@@ -1258,7 +1258,7 @@ void APD::InuputInitialization() {
 		std::vector<float> rates;
 		cv::Mat all_rate_map(dep.rows, dep.cols, CV_32FC1);
 		
-		std::cout << "2.1 " << " * " << height << std::endl;
+		// std::cout << "2.1 " << " * " << height << std::endl;
 
 		iss.clear();
 		while (std::getline(file, line)) {
@@ -1271,7 +1271,7 @@ void APD::InuputInitialization() {
 			xy_temp.push_back(make_float2(x_2d, y_2d));
 			xyz_temp.push_back(make_float3(x_3d, y_3d, z_3d));
 		}
-		std::cout << "3 " << " * " << height << std::endl;
+		// std::cout << "3 " << " * " << height << std::endl;
 
 		//std::cout << "xyz_temp: " << xyz_temp[0].x << xyz_temp[0].y << xyz_temp[0].z << std::endl;
 		//std::cout << "xyz_temp.size(): " << xyz_temp.size() << std::endl;
@@ -1292,30 +1292,29 @@ void APD::InuputInitialization() {
 				xy_temps.push_back(xy_temp[i]);
 			}
 		}
-		std::cout << "4 " << " * " << height << std::endl;
+		// std::cout << "4 " << " * " << height << std::endl;
 
 		float rate_max = 0;
-		std::cout << "4 " << " * " << rates.size() << std::endl;
+		// std::cout << "4 " << " * " << rates.size() << std::endl;
 		for (int i = 0; i < rates.size(); i++) {
-			std::cout << "4 " << " * " << height << std::endl;
+			// std::cout << "4 " << " * " << height << std::endl;
 			rate_max = MAX(rate_max, rates[i]);
-			std::cout << "4 " << " * " << height << std::endl;
-			std::cout << rates[i] << " ";
+			// std::cout << "4 " << " * " << height << std::endl;
+			// std::cout << rates[i] << " ";
 		}
-		std::cout << "5 " << " * "  << std::endl;
+		// std::cout << "5 " << " * "  << std::endl;
 
-		std::cout << "4 " << " * " << dep.rows << std::endl;
-
+		// std::cout << "4 " << " * " << dep.rows << std::endl;
 		float middle_rate = rates[rates.size() / 2];
 		for (int y = 0; y < dep.rows; y++) {
-			std::cout << "4.5 " << " * " << y << std::endl;
+			// std::cout << "4.5 " << " * " << y << std::endl;
 			for (int x = 0; x < dep.cols; x++) {
 				all_rate_map.at<float>(y, x) = middle_rate;
-				std::cout << "4.5 " << " * " << x << std::endl;
+				// std::cout << "4.5 " << " * " << x << std::endl;
 
 			}
 		}
-		std::cout << "5 " << " * " << height << std::endl;
+		// std::cout << "5 " << " * " << height << std::endl;
 
 
 		//std::cout << "middle_rate: " << middle_rate << std::endl;
